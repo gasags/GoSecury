@@ -32,87 +32,7 @@ class MainActivity : AppCompatActivity() {
     var subscriptionKey = "c0ffd6af1bbf49eab25cea25f593ff60"
     var faceServiceClient = FaceServiceRestClient(apiEndpoint, subscriptionKey)
     var personGroupId = "gosecury"
-    lateinit var personIdentify : Person
-
-
-
-    val faceIdList : ArrayList<UUID> = arrayListOf()
-    val personIdIdentify : ArrayList<UUID> = arrayListOf()
-
-    //region fonction async
-
-    val faceListSend = object : AsyncTask<InputStream, String, Array<Face>>() {
-
-        override fun doInBackground(vararg params: InputStream): Array<Face>? {
-            try {
-                val result = faceServiceClient.detect(
-                    params[0],
-                    true,
-                    false, null
-                )
-                if(result != null)
-                {
-                    for (face in result) {
-                        println(" faceId : " + face.faceId)
-                        faceIdList.add(face.faceId)
-                    }
-                }
-                return result
-            } catch (e: Exception) {
-                println("erreur envoie image " + e.message)
-                return null
-            }
-        }
-    }
-
-    val faceIdentify = object : AsyncTask<UUID, String, Array<IdentifyResult>>()
-    {
-        override fun doInBackground(vararg params: UUID): Array<IdentifyResult>?
-        {
-            try
-            {
-                println("faceIdentify " + personGroupId + " " + params)
-                var result = faceServiceClient.identity(
-                    personGroupId, // person group id
-                    params // face ids
-                    , 5
-                )
-                if (result != null)
-                {
-                    for (identifyResult in result) {
-                        println(identifyResult.candidates[0].personId)
-                        personIdIdentify.add(identifyResult.candidates[0].personId)
-                    }
-                }
-                return result
-            }
-            catch (e: Exception)
-            {
-                println("erreur identification " + e.message)
-                return null
-            }
-        }
-    }
-
-    val person = object : AsyncTask<UUID, String, Person>()
-    {
-        override fun doInBackground(vararg params: UUID): Person?
-        {
-            try
-            {
-                personIdentify = faceServiceClient.getPerson(personGroupId, params[0])
-                println(" nom : " + personIdentify.name)
-                return personIdentify
-                //return faceServiceClient.getPerson(personGroupId, params[0])
-            }
-            catch (e: Exception)
-            {
-                println("erreur getPerson" + e.message)
-                return null
-            }
-        }
-    }
-    //endregion
+    lateinit var alert : AlertDialog
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,6 +51,9 @@ class MainActivity : AppCompatActivity() {
             btnEnum = buttonType.CONTROL
             pictureAppIntent()
         }
+
+        val dialogConnexion = AlertDialog.Builder(this)
+        alert = dialogConnexion.create()
     }
 
     // On récupère la photo prise pour la traiter
@@ -138,47 +61,17 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
             val bmUser = data?.extras?.get("data") as Bitmap
 
-            val dialogConnexion = AlertDialog.Builder(this)
-            var alert = dialogConnexion.create()
-
-            val outputStream = ByteArrayOutputStream()
-            bmUser.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-            val inputStream = ByteArrayInputStream(outputStream.toByteArray())
-
             // Permet de vérifier la page de redirection
             if(btnEnum == buttonType.AUTH)
             {
-                faceListSend.execute(inputStream)
-
-                if(faceIdList.count() > 0)
-                {
-                    faceIdentify.execute(faceIdList[0])
-
-                    if(personIdIdentify.count() > 0)
-                    {
-                        person.execute(personIdIdentify[0])
-
-                        if(personIdentify != null)
-                        {
-                            val intent = Intent(this, GestionMateriel::class.java)
-                            intent.putExtra("bmUser", outputStream.toByteArray())
-                            intent.putExtra("idUser", "X8PZxh8S3ZiVHBruKDBC")
-                            startActivity(intent)
-                            finish()
-                        }
-                    }
-                    else
-                        alert.setMessage("Vous n'êtes pas autorisé à accéder au stock")
-                }
-                else
-                    alert.setMessage("Aucun visage détecté, veuillez réessayer")
+                detectFaceByPhoto(bmUser)
             }
             else if(btnEnum == buttonType.CONTROL)
             {
-                val intent = Intent(this, Controle::class.java)
+                /*val intent = Intent(this, Controle::class.java)
                 intent.putExtra("bmUser", outputStream.toByteArray())
                 startActivity(intent)
-                finish()
+                finish()*/
             }
         }
     }
@@ -190,5 +83,114 @@ class MainActivity : AppCompatActivity() {
             startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE)
         }
         }
+    }
+
+    private fun detectFaceByPhoto(bitMap: Bitmap)
+    {
+        val outputStream = ByteArrayOutputStream()
+        bitMap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+        val inputStream = ByteArrayInputStream(outputStream.toByteArray())
+
+        val faceIdList : ArrayList<UUID> = arrayListOf()
+
+        val faceListSend = object : AsyncTask<InputStream, String, Array<Face>>() {
+
+            override fun doInBackground(vararg params: InputStream): Array<Face>? {
+                try {
+                    return faceServiceClient.detect(
+                        params[0],
+                        true,
+                        false, null
+                    )
+                } catch (e: Exception) {
+                    println("erreur envoie image " + e.message)
+                    return null
+                }
+            }
+
+            override fun onPostExecute(result: Array<Face>)
+            {
+                if(result.count() > 0)
+                {
+                    for (face in result)
+                    {
+                        faceIdList.add(face.faceId)
+                    }
+                    identifyPerson(faceIdList[0])
+                }
+                else
+                {
+                    alert.setMessage("Aucun visage détecté, veuillez réessayer")
+                    alert.show()
+                }
+            }
+        }
+        faceListSend.execute(inputStream)
+    }
+
+    private fun identifyPerson(faceIdList: UUID)
+    {
+        val personIdIdentify : ArrayList<UUID> = arrayListOf()
+
+        val faceIdentify = object : AsyncTask<UUID, String, Array<IdentifyResult>>()
+        {
+            override fun doInBackground(vararg params: UUID): Array<IdentifyResult>?
+            {
+                try
+                {
+                    return faceServiceClient.identity(
+                        personGroupId, // person group id
+                        params // face ids
+                        , 5
+                    )
+                }
+                catch (e: Exception)
+                {
+                    println("erreur identification " + e.message)
+                    return null
+                }
+            }
+
+            override fun onPostExecute(result: Array<IdentifyResult>)
+            {
+                if (result[0].candidates.count() > 0)
+                {
+                        personIdIdentify.add(result[0].candidates[0].personId)
+                        getPerson(personIdIdentify[0])
+                }
+                else
+                {
+                    alert.setMessage("Vous n'avez pas accès au stock")
+                    alert.show()
+                }
+            }
+        }
+        faceIdentify.execute(faceIdList)
+    }
+
+    private fun getPerson(personId: UUID)
+    {
+        val person = object : AsyncTask<UUID, String, Person>()
+        {
+            override fun doInBackground(vararg params: UUID): Person?
+            {
+                try
+                {
+                    return faceServiceClient.getPerson(personGroupId, params[0])
+                }
+                catch (e: Exception)
+                {
+                    println("erreur getPerson" + e.message)
+                    return null
+                }
+            }
+
+            override fun onPostExecute(result: Person)
+            {
+                alert.setMessage("Bonjour " + result.name)
+                alert.show()
+            }
+        }
+        person.execute(personId)
     }
 }
