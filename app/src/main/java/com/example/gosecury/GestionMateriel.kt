@@ -19,10 +19,12 @@ import kotlin.collections.ArrayList
 class GestionMateriel : AppCompatActivity() {
 
     val db = FirebaseFirestore.getInstance()
-    var idUser = ""
+    var idUserApi = ""
 
     // liste permettant de stocker les id de firestore de la collection "materials"
     val listIdMaterial = arrayListOf<String>()
+
+    var idUser = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,11 +33,11 @@ class GestionMateriel : AppCompatActivity() {
         //On récupère l'id de l'utilisateur
         idUser = intent.getStringExtra("idUser") as String
 
-        getMaterial(idUser)
+        //idUser = getIdUser(idUserApi)
+        getMaterial()
 
         //listener du bouton "Accueil" pour rediriger sur la page principale
         val btnHome = findViewById<Button>(R.id.btnHome)
-
         btnHome.setOnClickListener {
             redirectHome()
         }
@@ -54,7 +56,7 @@ class GestionMateriel : AppCompatActivity() {
     }
 
     // Affichage des checkBoxs et modifications lors d'un changement en BDD
-    private fun getMaterial(idUser : String) {
+    private fun getMaterial() {
 
         val linearLayoutForCheckBoxs = findViewById<LinearLayout>(R.id.llCheckBox)
 

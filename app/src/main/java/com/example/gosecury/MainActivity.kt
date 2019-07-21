@@ -18,6 +18,7 @@ import com.microsoft.projectoxford.face.contract.IdentifyResult
 import android.app.AlertDialog
 import com.microsoft.projectoxford.face.contract.TrainingStatus
 import android.R.attr.name
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : AppCompatActivity() {
 
@@ -28,11 +29,15 @@ class MainActivity : AppCompatActivity() {
     }
     var btnEnum = buttonType.NONE
 
+    val db = FirebaseFirestore.getInstance()
+
     var apiEndpoint = "https://westcentralus.api.cognitive.microsoft.com/face/v1.0"
     var subscriptionKey = "c0ffd6af1bbf49eab25cea25f593ff60"
     var faceServiceClient = FaceServiceRestClient(apiEndpoint, subscriptionKey)
     var personGroupId = "gosecury"
     lateinit var alert : AlertDialog
+
+    lateinit var bitMapUser: Bitmap
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,20 +64,9 @@ class MainActivity : AppCompatActivity() {
     // On récupère la photo prise pour la traiter
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
-            val bmUser = data?.extras?.get("data") as Bitmap
+            bitMapUser = data?.extras?.get("data") as Bitmap
 
-            // Permet de vérifier la page de redirection
-            if(btnEnum == buttonType.AUTH)
-            {
-                detectFaceByPhoto(bmUser)
-            }
-            else if(btnEnum == buttonType.CONTROL)
-            {
-                /*val intent = Intent(this, Controle::class.java)
-                intent.putExtra("bmUser", outputStream.toByteArray())
-                startActivity(intent)
-                finish()*/
-            }
+            connectByPhoto(bitMapUser)
         }
     }
 
@@ -85,7 +79,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun detectFaceByPhoto(bitMap: Bitmap)
+    // On détecte un visage sur la photo envoyée
+    private fun connectByPhoto(bitMap: Bitmap)
     {
         val outputStream = ByteArrayOutputStream()
         bitMap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
@@ -128,6 +123,7 @@ class MainActivity : AppCompatActivity() {
         faceListSend.execute(inputStream)
     }
 
+    // On compare via l'API que la personne existe dans la base
     private fun identifyPerson(faceIdList: UUID)
     {
         val personIdIdentify : ArrayList<UUID> = arrayListOf()
@@ -168,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         faceIdentify.execute(faceIdList)
     }
 
+    // On récupère les informations de la personne identifiée
     private fun getPerson(personId: UUID)
     {
         val person = object : AsyncTask<UUID, String, Person>()
@@ -187,10 +184,55 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPostExecute(result: Person)
             {
-                alert.setMessage("Bonjour " + result.name)
-                alert.show()
+                getIdUser(result)
             }
         }
         person.execute(personId)
+    }
+
+    // redirection
+    private fun redirect(idUder: String)
+    {
+        val outputStream = ByteArrayOutputStream()
+        bitMapUser.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+
+        if(btnEnum == buttonType.AUTH)
+        {
+            val intent = Intent(this, GestionMateriel::class.java)
+            intent.putExtra("bmUser", outputStream.toByteArray())
+            intent.putExtra("idUser", idUder)
+            startActivity(intent)
+        }
+        else if(btnEnum == buttonType.CONTROL)
+        {
+            val intent = Intent(this, Controle::class.java)
+            intent.putExtra("bmUser", outputStream.toByteArray())
+            startActivity(intent)
+        }
+        finish()
+    }
+
+    private fun getIdUser(person : Person): String
+    {
+        var idUser = ""
+        db.collection("users")
+            .get()
+            .addOnSuccessListener { result ->
+                    for (document in result) {
+                        println("user : ${document.id} => ${document.data}")
+                        //Log.d(TAG, "${document.id} => ${document.data}")
+                        if(document.data["idUserCognitive"] == person.personId.toString())
+                        {
+                            println("userFind : ${document.id} => ${document.data}")
+                            idUser = document.id
+                            redirect(document.id)
+                            break
+                        }
+                    }
+            }
+            .addOnFailureListener { exception ->
+                //Log.d(TAG, "Error getting documents: ", exception)
+            }
+        return idUser
     }
 }
